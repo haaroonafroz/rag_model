@@ -1,0 +1,31 @@
+# Text Processing
+nltk==3.8.1
+spacy==3.6.0
+
+# PDF Parsing
+PyPDF2==3.0.1
+pdfplumber==0.10.1
+pytesseract==0.3.10  # Only if OCR is needed for scanned PDFs
+
+# Sentence Embeddings
+sentence-transformers==2.2.2
+
+# Vector Store
+faiss-cpu==1.7.4  # Use faiss-gpu if you have a compatible GPU
+
+# Question Answering
+transformers==4.35.0
+
+# Streamlit for Frontend
+streamlit==1.25.0
+
+# Additional Utilities
+numpy==1.26.0
+pandas==2.1.2  # Optional for structured data handling
+scikit-learn==1.4.2  # For additional ML utilities, if needed
+
+# Testing
+pytest==7.4.2
+
+# Optional OCR Tools (only if OCR support is added)
+pillow==10.1.0
