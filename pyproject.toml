@@ -35,6 +35,9 @@ dependencies = [
     "pillow>=10.1.0"
 ]
 
+[project.scripts]
+download_nltk = "src.utils.download_nltk_data"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
