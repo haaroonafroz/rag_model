@@ -2,12 +2,16 @@ import streamlit as st
 from pipeline import RAGPipeline
 from store_vector import VectorStore
 from transformers import pipeline
+from utils import generate_embeddings
 
 st.title("PDF Q&A with RAG")
 
+sample_chunk = ["This is a sample text."]
+embedding_dim = len(generate_embeddings(sample_chunk)[0])
+
 # Initialize components
 qa_model = pipeline("question-answering")
-vector_store = VectorStore(dim=384)  # Assuming the embeddings have 384 dimensions
+vector_store = VectorStore(dim=embedding_dim)  # Assuming the embeddings have 384 dimensions
 rag_pipeline = RAGPipeline(vector_store, qa_model)
 
 # Upload PDF and ask questions

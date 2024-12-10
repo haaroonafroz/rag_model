@@ -16,7 +16,7 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
-def chunk_text(text, max_length=300):
+def chunk_text(text, max_length=50):
     sentences = sent_tokenize(text)
     chunks, chunk = [], []
     for sentence in sentences:
@@ -42,7 +42,8 @@ def process_pdf_to_chunks(pdf_path):
     return chunk_text(text)
 
 # ------------------Embedding Generation------------------
-model = SentenceTransformer('all-MiniLM-L6-v2')
+model = SentenceTransformer("jinaai/jina-embeddings-v3", trust_remote_code=True)
+model[0].default_task = 'retrieval.query'
 
 def generate_embeddings(chunks):
     return model.encode(chunks, show_progress_bar=True)

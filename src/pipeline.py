@@ -1,9 +1,10 @@
-from transformers import pipeline
+from transformers import pipeline, AutoModel, AutoTokenizer
 from store_vector import VectorStore
-from utils import generate_embeddings
-from utils import process_pdf_to_chunks
+from utils import *
 
-qa_pipeline = pipeline("question-answering")
+model = AutoModel.from_pretrained("jinaai/jina-embeddings-v3", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("jinaai/jina-embeddings-v3", trust_remote_code=True)
+qa_pipeline = pipeline("question-answering", model=model, tokenizer= tokenizer)
 
 class RAGPipeline:
     def __init__(self, vector_store, qa_model):
