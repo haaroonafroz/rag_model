@@ -11,13 +11,13 @@ st.sidebar.header("Chunking Configuration")
 chunk_strategy = st.sidebar.selectbox(
     "Chunking Strategy",
     ["paragraph", "word", "character"],
-    index=0  # Default to paragraph
+    index=1  # Default to word
 )
 chunk_size = st.sidebar.number_input(
     "Chunk Size",
     min_value=100,
     max_value=2000,
-    value=500
+    value=128
 )
 
 # Initialize vector store
