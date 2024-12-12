@@ -28,4 +28,4 @@ scikit-learn==1.4.2  # For additional ML utilities, if needed
 pytest==7.4.2
 
 # Optional OCR Tools (only if OCR support is added)
-pillow==10.1.0
+pillow<10

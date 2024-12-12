@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.scripts]
-download_nltk = "src.utils.download_nltk_data"
+download_nltk = "src.utils:download_nltk_data"
 
 [tool.setuptools.packages.find]
 where = ["src"]
