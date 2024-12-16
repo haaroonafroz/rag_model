@@ -11,7 +11,7 @@ from dataclasses import dataclass
 class ChunkingConfig:
     strategy: str  # 'character', 'paragraph', or 'word'
     chunk_size: int
-    overlap: Optional[int] = None
+    overlap: Optional[float] = None
 
 # -----------------Text Extraction-----------------------
 
@@ -26,7 +26,7 @@ def chunk_text(text: str, config: ChunkingConfig) -> List[str]:
         # Split text into words
         words = text.split()
         # Calculate step size based on overlap if provided
-        step = config.chunk_size - (config.overlap or 0)
+        step = max(1, round(config.chunk_size - config.chunk_size * (config.overlap or 0)))
         chunks = []
         
         for i in range(0, len(words), step):
@@ -38,7 +38,7 @@ def chunk_text(text: str, config: ChunkingConfig) -> List[str]:
         
     else:  # default to character-based
         # If no overlap specified, use chunk_size as step
-        step = config.chunk_size - (config.overlap or 0)
+        step = max(1, round(config.chunk_size - config.chunk_size * (config.overlap or 0)))
         return [
             text[i:i + config.chunk_size].strip()
             for i in range(0, len(text), step)
@@ -75,3 +75,23 @@ def generate_embeddings(texts: List[str], task: str = 'retrieval.query', batch_s
     ).tolist()
         
     return embeddings
+
+# ------------QA-Pipeline---------------
+from transformers import pipeline, T5Tokenizer, T5ForConditionalGeneration
+
+def generate_answer(query: str, context: str) -> str:
+
+    """
+    Generate an answer for a query based on the provided context using a generative language model.
+    """
+    tokenizer= T5Tokenizer.from_pretrained("google/flan-t5-large")
+    model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large")
+    # Load the model pipeline
+    qa_pipeline = pipeline("text2text-generation", model=model, tokenizer=tokenizer)
+    
+    # Construct the input prompt
+    prompt = f"Answer the question based on the context:\n\nContext: {context}\n\nQuestion: {query}\n\nAnswer:"
+    
+    # Generate an answer
+    result = qa_pipeline(prompt, max_length=256, num_return_sequences=1)
+    return result[0]["generated_text"]

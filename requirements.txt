@@ -20,7 +20,7 @@ transformers==4.35.0
 streamlit==1.25.0
 
 # Additional Utilities
-numpy==1.26.0
+numpy>=1.26.0
 pandas==2.1.2  # Optional for structured data handling
 scikit-learn==1.4.2  # For additional ML utilities, if needed
 
