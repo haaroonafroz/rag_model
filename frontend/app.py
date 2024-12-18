@@ -124,6 +124,7 @@ if query and st.session_state.vector_store:
 
         st.subheader("Answer")
         st.info(f"Time taken to retrieve results: {retrieval_time:.2f} seconds")
+        st.markdown(f"**{raw_answer}**")
         st.markdown(f"**{answer}**")
         
         st.subheader("Supporting Context")

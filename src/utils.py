@@ -64,7 +64,7 @@ class EmbeddingModel:
         Returns the same model instance throughout the program's lifetime.
         """
         if cls._instance is None:
-            cls._instance = SentenceTransformer('nlpaueb/legal-bert-base-uncased')
+            cls._instance = SentenceTransformer('all-MiniLM-L6-v2')
         return cls._instance
 
 def generate_embeddings(texts: List[str], task: str = 'retrieval.query', batch_size: int = 32) -> List[List[float]]:
@@ -79,30 +79,40 @@ def generate_embeddings(texts: List[str], task: str = 'retrieval.query', batch_s
     return embeddings
 
 # ------------QA-Pipeline---------------
-from transformers import pipeline, T5Tokenizer, T5ForConditionalGeneration, AutoModel, AutoTokenizer, AutoModelForQuestionAnswering
+from transformers import pipeline, AutoModel, AutoTokenizer, AutoModelForQuestionAnswering, AutoModelForPreTraining, BertForQuestionAnswering
+
+def truncate_context(context: str, max_tokens: int = 512) -> str:
+    """
+    Truncate the context to ensure it fits within the model's token limit.
+    """
+    tokenizer = AutoTokenizer.from_pretrained("deepset/bert-base-cased-squad2")
+    tokenized_context = tokenizer(context, truncation=True, max_length=max_tokens, return_tensors="pt")
+    return tokenizer.decode(tokenized_context['input_ids'][0], skip_special_tokens=True)
+
+# --------------------------------
+
+def load_qa_pipeline():
+    tokenizer = AutoTokenizer.from_pretrained("deepset/bert-base-cased-squad2")
+    model = BertForQuestionAnswering.from_pretrained("deepset/bert-base-cased-squad2")
+    return pipeline("question-answering", model=model, tokenizer=tokenizer)
+
+QA_PIPELINE = load_qa_pipeline()
 
 def generate_answer(query: str, context: str) -> str:
 
     """
     Generate an answer for a query based on the provided context using a generative language model.
-    """
-    # tokenizer= T5Tokenizer.from_pretrained("google/flan-t5-large")
-    # model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large")
-    tokenizer = AutoTokenizer.from_pretrained("nlpaueb/legal-bert-base-uncased")
-    model = AutoModelForQuestionAnswering.from_pretrained("nlpaueb/legal-bert-base-uncased")
-    # Load the model pipeline
-    qa_pipeline = pipeline("question-answering", model=model, tokenizer=tokenizer)
-    
-    # Construct the input prompt
-    prompt = f"Answer the question based on the context:\n\nContext: {context}\n\nQuestion: {query}\n\nAnswer:"
-
+    """    
     # Prepare input
-    input_data = {"question": query, "context": context}
+    truncated_context = truncate_context(context, max_tokens=512)
+    input_data = {"question": query, "context": truncated_context}
+    # input_data = {"question": query, "context": context}
     
     # Generate an answer
-    result = qa_pipeline(input_data)
+    result = QA_PIPELINE(input_data)
     return result['answer']
 
+# -----------------------------
 
 # Load the summarization pipeline once and cache it for reuse
 def load_summarization_pipeline():
@@ -113,6 +123,8 @@ def load_summarization_pipeline():
 
 # Cached instance of the summarizer
 SUMMARIZER = load_summarization_pipeline()
+
+# ------------------------------
 
 def summarize_answer(chunks: List[str], query: str) -> str:
     """
@@ -127,10 +139,11 @@ def summarize_answer(chunks: List[str], query: str) -> str:
     """
     # Combine the top-k chunks into a single context
     combined_context = " ".join(chunks)
+    truncated_context = truncate_context(combined_context, max_tokens=1024)
     
     # Format input for summarization
     prompt = (
-        f"Context: {combined_context}\n\n"
+        f"Context: {truncated_context}\n\n"
         f"Question: {query}\n\n"
         "Provide a concise and relevant answer to the question based on the context."
     )
