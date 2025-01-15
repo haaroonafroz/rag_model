@@ -1,134 +1,160 @@
 import streamlit as st
-from store_vector import VectorStore
-from utils import *
-import tempfile
-import os
 import time
-
-st.title("PDF Search with Embeddings")
-
-# Sidebar for chunking configuration
-st.sidebar.header("Chunking Configuration")
-chunk_strategy = st.sidebar.selectbox(
-    "Chunking Strategy",
-    ["paragraph", "word", "character"],
-    index=1  # Default to word
-)
-chunk_size = st.sidebar.number_input(
-    "Chunk Size",
-    min_value=2,
-    max_value=2000,
-    value=128
+from rag_core import (
+    ensure_folders_exist,
+    initialize_retriever,
+    create_chain,
+    setup_chain,
+    load_chat_history,
+    save_chat_history,
+    clear_chat_history,
+    update_retriever_k,
+    PDF_FILE,
+    MODEL_NAME,  # Changed from COLBERT_MODEL
+    GENERATOR_MODEL,
+    DEFAULT_SYSTEM_PROMPT
 )
 
-# Sidebar: Optional user-provided context
-st.sidebar.header("Context Configuration")
-user_context = st.sidebar.text_area("Optional Context", value="", help="Add a custom context before querying")
+# Initialize folders
+ensure_folders_exist()
 
-# Add a selection for search type
-search_type = st.sidebar.radio(
-    "Search Type",
-    options=["Retrieval-Passage", "Question-Answering"],
-    index=1  # Default to Question-Answering
-)
+st.title("RAG Chatbot System")
 
-# Initialize vector store
-if 'vector_store' not in st.session_state:
-    sample_chunk = ["This is a sample text."]
-    embedding_dim = len(generate_embeddings(sample_chunk)[0])
-    st.session_state.vector_store = VectorStore(dim=embedding_dim)
-
-# Initialize a set to track processed PDFs
-if 'processed_pdfs' not in st.session_state:
-    st.session_state.processed_pdfs = set()
-
-# Modified to accept multiple PDFs
-uploaded_files = st.file_uploader("Upload PDFs", type="pdf", accept_multiple_files=True)
-
-# Process PDFs button
-if uploaded_files: #and st.button("Process PDFs"):
-    chunking_config = ChunkingConfig(
-        strategy=chunk_strategy,
-        chunk_size=chunk_size,
-        overlap=0.15
+# Sidebar Configuration
+with st.sidebar:
+    st.header("System Configuration")
+    st.write(f"📄 Document: {PDF_FILE}")
+    st.write(f"📚 Retrieval: SentenceTransformer")
+    st.write(f"🔤 Embeddings Model: {MODEL_NAME}")
+    st.write(f"🤖 Generator Model: {GENERATOR_MODEL}")
+    
+    st.header("Debug Settings")
+    show_timings = st.checkbox("Show Processing Times", value=True)
+    show_chunks = st.checkbox("Show Chunk Details", value=True)
+    show_retrieved = st.checkbox("Show Retrieved Chunks", value=True)
+    
+    st.header("Retrieval Settings")
+    k_chunks = st.slider(
+        "Number of chunks to retrieve per query",
+        min_value=1,
+        max_value=5,
+        value=2,
+        help="Control how many relevant chunks to use for answering"
     )
-
-    for uploaded_file in uploaded_files:
-        file_hash = get_file_hash(uploaded_file)
-
-        # Check if already processed
-        if file_hash not in st.session_state.processed_pdfs:
-            # Check for saved embeddings
-            embeddings, chunks = load_embeddings(file_hash)
-
-            if embeddings and chunks:
-                st.info(f"Loaded cached embeddings for '{uploaded_file.name}'")
-            else:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                    tmp_file.write(uploaded_file.read())
-                    pdf_path = tmp_file.name
-
-                # Extract text and process chunks
-                text = extract_text_from_pdf(pdf_path)
-                chunks = chunk_text(text, chunking_config)
-                embeddings = generate_embeddings(chunks, task="retrieval.passage")
-
-                # Save embeddings for future use
-                save_embeddings(file_hash, embeddings, chunks)
-
-                # Clean up the temporary file
-                os.unlink(pdf_path)
-
-            # Add embeddings and chunks to the vector store
-            st.session_state.vector_store.add_vectors(embeddings, chunks)
-
-            # Mark the file as processed
-            st.session_state.processed_pdfs.add(file_hash)
     
-    st.success(f"Processed {len(st.session_state.processed_pdfs)} unique PDFs. Total chunks: {st.session_state.vector_store.get_total_chunks()}")
+    st.header("Prompt Configuration")
+    system_prompt = st.text_area(
+        "System Prompt",
+        value=DEFAULT_SYSTEM_PROMPT,
+        height=100
+    )
+    user_prompt_template = "Question: {question}\nContext: {context}"
 
+# Initialize Retriever
+@st.cache_resource
+def get_retriever():
+    return initialize_retriever()
 
-# Search interface
-query = st.text_input("Enter your search query")
+retriever, split_docs = get_retriever()
 
-if query and st.session_state.vector_store:
-    # Record start time
+# Display chunks if enabled
+if show_chunks:
+    st.header("Document Analysis")
+    st.metric("Total Chunks", len(split_docs))
+    
+    for i, chunk in enumerate(split_docs):
+        with st.expander(f"📄 Chunk {i + 1}"):
+            st.text(chunk.page_content)
+            st.info(f"Characters: {len(chunk.page_content)}")
+
+# Create the base chain
+prompt, llm = create_chain(system_prompt, user_prompt_template)
+
+# Debug retriever wrapper
+def debug_retriever(retriever):
+    def retrieve(query):
+        st.divider()
+        st.subheader("🔍 Retrieval Analysis")
+        
+        retrieval_start_time = time.time()
+        docs = retriever.get_relevant_documents(query)
+        retrieval_time = time.time() - retrieval_start_time
+        
+        st.info(f"📊 Retrieved {len(docs)} most relevant chunks in {retrieval_time:.2f} seconds")
+        st.write(f"💭 Query: '{query}'")
+        
+        for i, doc in enumerate(docs):
+            with st.expander(f"📑 Chunk {i+1} of {len(docs)}", expanded=True):
+                st.markdown("**Content:**")
+                st.text(doc.page_content)
+                st.markdown(f"""
+                    **Analysis:**
+                    - Characters: {len(doc.page_content)}
+                    - Words: {len(doc.page_content.split())}
+                    - Chunk used because it contains relevant information for the query
+                """)
+        
+        st.divider()
+        return docs
+    
+    return retrieve
+
+# Update retriever with current k_chunks
+retriever = update_retriever_k(retriever, k_chunks)
+wrapped_retriever = debug_retriever(retriever)
+chain = setup_chain(retriever, prompt, llm)
+
+# Initialize chat history in session state
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = load_chat_history()
+
+# Display chat history
+st.header("Chat History")
+timestamp = time.time()
+
+for i, entry in enumerate(st.session_state.chat_history):
+    with st.expander(f"Q: {entry['question'][:50]}..."):
+        st.text_area(
+            "Question", 
+            entry['question'], 
+            height=100, 
+            disabled=True,
+            key=f"q_{i}_{timestamp}"
+        )
+        st.text_area(
+            "Answer", 
+            entry['response'], 
+            height=150, 
+            disabled=True,
+            key=f"a_{i}_{timestamp}"
+        )
+
+# Question input and processing
+st.header("Ask Your Question")
+user_question = st.text_input("Enter your question:")
+
+if user_question:
     start_time = time.time()
+    try:
+        with st.spinner("Generating answer..."):
+            retrieved_docs = wrapped_retriever(user_question)
+            
+            response = chain.invoke(user_question)
+            st.success("Answer:")
+            st.write(response)
+            
+            st.session_state.chat_history.append({
+                "question": user_question, 
+                "response": response,
+                "retrieved_chunks": [doc.page_content for doc in retrieved_docs]
+            })
+            save_chat_history(st.session_state.chat_history)
+            
+            if show_timings:
+                st.info(f"⏱️ Total response time: {time.time() - start_time:.2f} seconds")
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
 
-    #Generate Query-Embedding
-    query_embedding = generate_embeddings([query], task="retrieval.passage")[0]
-    similar_chunks, distances = st.session_state.vector_store.query(query_embedding, top_k=5)
-    
-    # Combine the top-k chunks into a single context
-    context = " ".join(similar_chunks)
-    if user_context:
-        context = user_context + " " + context  # Append user-provided context
-    
-    # Display time taken
-    retrieval_time = time.time() - start_time
-    
-    if search_type == "Retrieval-Passage":
-        st.subheader("Search Results")
-        st.info(f"Time taken to retrieve results: {retrieval_time:.2f} seconds")
-        
-        for chunk, distance in zip(similar_chunks, distances):
-            st.markdown(f"**Similarity Score: {1 / (1 + distance):.3f}**")
-            st.text(chunk)
-            st.markdown("---")
-
-    elif search_type == "Question-Answering":
-        # Use a generative model to answer the query based on context
-        raw_answer = generate_answer(query, context)  # New function to generate answer
-        answer = summarize_answer(similar_chunks, query)
-        
-
-        st.subheader("Answer")
-        st.info(f"Time taken to retrieve results: {retrieval_time:.2f} seconds")
-        st.markdown(f"**{raw_answer}**")
-        st.markdown(f"**{answer}**")
-        
-        st.subheader("Supporting Context")
-        for chunk, distance in zip(similar_chunks, distances):
-            st.markdown(f"**Similarity Score: {1 / (1 + distance):.3f}**")
-            st.text(chunk)
-            st.markdown("---")
+if st.button("Clear History"):
+    st.session_state.chat_history = []
+    clear_chat_history()

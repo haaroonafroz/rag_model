@@ -1,9 +1,19 @@
+# Core Utilities
+json  # Standard library, no need to install
+logging  # Standard library, no need to install
+os  # Standard library, no need to install
+random  # Standard library, no need to install
+time  # Standard library, no need to install
+hashlib  # Standard library, no need to install
+pickle  # Standard library, no need to install
+typing  # Standard library (typing module enhancements)
+
 # Text Processing
 nltk==3.8.1
-spacy==3.6.0
+# Ensure `punkt` tokenizer is available for NLTK
+# Run `nltk.download('punkt')` after installation
 
 # PDF Parsing
-PyPDF2==3.0.1
 pdfplumber==0.10.1
 pytesseract==0.3.10  # Only if OCR is needed for scanned PDFs
 
@@ -16,6 +26,10 @@ faiss-cpu==1.7.4  # Use faiss-gpu if you have a compatible GPU
 
 # Question Answering
 transformers==4.35.0
+torch>=2.0.0  # Required for Transformers and SentenceTransformer
+
+# Environment Management
+python-dotenv==1.0.0  # For loading environment variables
 
 # Streamlit for Frontend
 streamlit==1.25.0
@@ -24,6 +38,10 @@ streamlit==1.25.0
 numpy>=1.26.0
 pandas==2.1.2  # Optional for structured data handling
 scikit-learn==1.4.2  # For additional ML utilities, if needed
+
+# LangChain (specific modules referenced in imports)
+langchain-core==0.0.208  # Update as per your compatibility needs
+langchain-community==0.0.9  # Includes Ollama
 
 # Testing
 pytest==7.4.2
