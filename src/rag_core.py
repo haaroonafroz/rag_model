@@ -117,8 +117,8 @@ def initialize_retriever() -> Tuple[EmbeddingRetriever, List[Document]]:
 
 def create_chain(system_prompt: str = DEFAULT_SYSTEM_PROMPT, user_prompt_template: str = DEFAULT_USER_PROMPT):
     """Create the BART generator with specified prompts."""
-    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
-    model = BartForConditionalGeneration.from_pretrained("facebook/bart-large")
+    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large-cnn")
+    model = BartForConditionalGeneration.from_pretrained("facebook/bart-large-cnn")
 
     def generate_answer(inputs: dict) -> str:
         """Generate an answer using BART."""
