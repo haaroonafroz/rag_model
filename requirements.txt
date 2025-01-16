@@ -1,13 +1,3 @@
-# Core Utilities
-json  # Standard library, no need to install
-logging  # Standard library, no need to install
-os  # Standard library, no need to install
-random  # Standard library, no need to install
-time  # Standard library, no need to install
-hashlib  # Standard library, no need to install
-pickle  # Standard library, no need to install
-typing  # Standard library (typing module enhancements)
-
 # Text Processing
 nltk==3.8.1
 # Ensure `punkt` tokenizer is available for NLTK
@@ -40,11 +30,11 @@ pandas==2.1.2  # Optional for structured data handling
 scikit-learn==1.4.2  # For additional ML utilities, if needed
 
 # LangChain (specific modules referenced in imports)
-langchain-core==0.0.208  # Update as per your compatibility needs
-langchain-community==0.0.9  # Includes Ollama
+langchain-core==0.3.29  # Update as per your compatibility needs
+langchain-community==0.3.14  # Includes Ollama
 
 # Testing
 pytest==7.4.2
 
 # Optional OCR Tools (only if OCR support is added)
-pillow<10
+pillow<10s
