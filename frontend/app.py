@@ -46,7 +46,7 @@ def get_retriever():
 retriever, split_docs = get_retriever()
 
 # Create the base chain
-prompt, llm = create_chain(system_prompt, user_prompt_template)
+generate_answer = create_chain(system_prompt, user_prompt_template)
 
 # Debug retriever wrapper
 def debug_retriever(retriever):
@@ -80,7 +80,7 @@ def debug_retriever(retriever):
 # Update retriever with current k_chunks
 retriever = update_retriever_k(retriever, k_chunks)
 wrapped_retriever = debug_retriever(retriever)
-chain = setup_chain(retriever, prompt, llm)
+chain = setup_chain(retriever, generate_answer)
 
 # Initialize chat history in session state
 if 'chat_history' not in st.session_state:
@@ -117,7 +117,7 @@ if user_question:
         with st.spinner("Generating answer..."):
             retrieved_docs = wrapped_retriever(user_question)
             
-            response = chain.invoke(user_question)
+            response = chain(user_question)
             st.success("Answer:")
             st.write(response)
             

@@ -13,6 +13,7 @@ import faiss
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
+from transformers import BartForConditionalGeneration, BartTokenizer
 from utils import *
 
 # Load environment variables
@@ -114,22 +115,33 @@ def initialize_retriever() -> Tuple[EmbeddingRetriever, List[Document]]:
     
     return retriever, split_docs
 
-def create_chain(system_prompt: str = DEFAULT_SYSTEM_PROMPT, 
-                user_prompt_template: str = DEFAULT_USER_PROMPT):
-    """Create the LLM chain with specified prompts."""
-    llm = Ollama(model=GENERATOR_MODEL, base_url=LLM_BASE_URL)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("user", str(user_prompt_template))
-    ])
-    return prompt, llm
+def create_chain(system_prompt: str = DEFAULT_SYSTEM_PROMPT, user_prompt_template: str = DEFAULT_USER_PROMPT):
+    """Create the BART generator with specified prompts."""
+    tokenizer = BartTokenizer.from_pretrained("facebook/bart-large")
+    model = BartForConditionalGeneration.from_pretrained("facebook/bart-large")
 
-def setup_chain(retriever: EmbeddingRetriever, prompt, llm):
+    def generate_answer(inputs: dict) -> str:
+        """Generate an answer using BART."""
+        question = inputs["question"]
+        context = inputs["context"]
+        input_text = f"{system_prompt}\n{user_prompt_template.format(question=question, context=context)}"
+        
+        inputs = tokenizer(input_text, return_tensors="pt", truncation=True, max_length=1024)
+        outputs = model.generate(**inputs, max_length=200, num_beams=5, early_stopping=True)
+        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    return generate_answer
+
+
+def setup_chain(retriever: EmbeddingRetriever, generate_answer):
     """Set up the complete RAG chain."""
-    setup = RunnableParallel(
-        {"context": retriever.get_relevant_documents, "question": RunnablePassthrough()}
-    )
-    chain = setup | prompt | llm | StrOutputParser()
+    def chain(question: str) -> str:
+        # Retrieve relevant documents
+        retrieved_docs = retriever.get_relevant_documents(question)
+        context = " ".join([doc.page_content for doc in retrieved_docs])
+        # Generate the answer using BART
+        return generate_answer({"question": question, "context": context})
+    
     return chain
 
 def update_retriever_k(retriever: EmbeddingRetriever, k: int):
