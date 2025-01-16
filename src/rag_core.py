@@ -8,18 +8,18 @@ from langchain_community.llms import Ollama
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 from langchain_core.documents import Document
 from utils import *
-from recursive_chunking import *
 from transformers import AutoTokenizer
 import faiss
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
+from utils import *
 
 # Load environment variables
 load_dotenv()
 
 # Configurations
-LLM_BASE_URL = "http://localhost:11434"
+LLM_BASE_URL = "http://localhost:8501"
 GENERATOR_MODEL = "llama3.2"
 PDF_FILE = "DORA.pdf"
 CHUNKS_FILE = "dora_chunks_simple.json"
@@ -28,12 +28,12 @@ JSON_HISTORY_FILE = "chat_history.json"
 
 # Embedding configurations
 MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
-USE_GPU = False  # Set to True if you have GPU
+USE_GPU = False 
 DEVICE = "cuda" if USE_GPU and torch.cuda.is_available() else "cpu"
 
 # Default prompts
-DEFAULT_SYSTEM_PROMPT = """You are a helpful assistant. Answer the user's question using only the context provided. Make sure you Are not writing anything beyond the context
-If you don't understand the question or can't find relevant information in the context, reply with 'I don't know sir '."""
+DEFAULT_SYSTEM_PROMPT = """Answer the user's question using only the context provided. The answer should be precise without any extra detail that does not exist in the given context.
+If you don't understand the question or can't find relevant information in the retrieved context, reply with 'I don't know.'."""
 DEFAULT_USER_PROMPT = "Question: {question}\nContext: {context}"
 
 class EmbeddingRetriever:
@@ -93,13 +93,6 @@ class EmbeddingRetriever:
         """Update the number of documents to retrieve."""
         self.k = k
 
-def ensure_folders_exist():
-    """Ensure necessary folders and files exist."""
-    os.makedirs(VECTOR_EMBEDDINGS_FOLDER, exist_ok=True)
-    if not os.path.exists(JSON_HISTORY_FILE):
-        with open(JSON_HISTORY_FILE, "w") as f:
-            json.dump([], f)
-
 def initialize_retriever() -> Tuple[EmbeddingRetriever, List[Document]]:
     """Initialize or load the retriever and document chunks."""
     # Load or create chunks
@@ -138,23 +131,6 @@ def setup_chain(retriever: EmbeddingRetriever, prompt, llm):
     )
     chain = setup | prompt | llm | StrOutputParser()
     return chain
-
-def load_chat_history() -> List[dict]:
-    """Load chat history from file."""
-    if os.path.exists(JSON_HISTORY_FILE):
-        with open(JSON_HISTORY_FILE, "r") as f:
-            return json.load(f)
-    return []
-
-def save_chat_history(chat_history: List[dict]):
-    """Save chat history to file."""
-    with open(JSON_HISTORY_FILE, "w") as f:
-        json.dump(chat_history, f, indent=4)
-
-def clear_chat_history():
-    """Clear the chat history."""
-    with open(JSON_HISTORY_FILE, "w") as f:
-        json.dump([], f)
 
 def update_retriever_k(retriever: EmbeddingRetriever, k: int):
     """Update the number of documents to retrieve."""

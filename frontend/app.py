@@ -1,19 +1,7 @@
 import streamlit as st
 import time
-from rag_core import (
-    ensure_folders_exist,
-    initialize_retriever,
-    create_chain,
-    setup_chain,
-    load_chat_history,
-    save_chat_history,
-    clear_chat_history,
-    update_retriever_k,
-    PDF_FILE,
-    MODEL_NAME,  # Changed from COLBERT_MODEL
-    GENERATOR_MODEL,
-    DEFAULT_SYSTEM_PROMPT
-)
+from utils import *
+from rag_core import *
 
 # Initialize folders
 ensure_folders_exist()
@@ -24,7 +12,7 @@ st.title("RAG Chatbot System")
 with st.sidebar:
     st.header("System Configuration")
     st.write(f"📄 Document: {PDF_FILE}")
-    st.write(f"📚 Retrieval: SentenceTransformer")
+    st.write(f"📚 Retriever Model: SentenceTransformer")
     st.write(f"🔤 Embeddings Model: {MODEL_NAME}")
     st.write(f"🤖 Generator Model: {GENERATOR_MODEL}")
     
@@ -37,8 +25,8 @@ with st.sidebar:
     k_chunks = st.slider(
         "Number of chunks to retrieve per query",
         min_value=1,
-        max_value=5,
-        value=2,
+        max_value=15,
+        value=5,
         help="Control how many relevant chunks to use for answering"
     )
     
@@ -56,16 +44,6 @@ def get_retriever():
     return initialize_retriever()
 
 retriever, split_docs = get_retriever()
-
-# Display chunks if enabled
-if show_chunks:
-    st.header("Document Analysis")
-    st.metric("Total Chunks", len(split_docs))
-    
-    for i, chunk in enumerate(split_docs):
-        with st.expander(f"📄 Chunk {i + 1}"):
-            st.text(chunk.page_content)
-            st.info(f"Characters: {len(chunk.page_content)}")
 
 # Create the base chain
 prompt, llm = create_chain(system_prompt, user_prompt_template)
@@ -158,3 +136,13 @@ if user_question:
 if st.button("Clear History"):
     st.session_state.chat_history = []
     clear_chat_history()
+
+    # Display chunks if enabled
+if show_chunks:
+    st.header("Document Analysis")
+    st.metric("Total Chunks", len(split_docs))
+    
+    for i, chunk in enumerate(split_docs):
+        with st.expander(f"📄 Chunk {i + 1}"):
+            st.text(chunk.page_content)
+            st.info(f"Characters: {len(chunk.page_content)}")

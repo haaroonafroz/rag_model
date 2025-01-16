@@ -1,180 +1,136 @@
+# utils.py
+import os
 import re
+import json
 import pdfplumber
+import numpy as np
+import faiss
 import torch
-import hashlib
-import pickle
-
+from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
-from typing import List, Optional
-from dataclasses import dataclass
+from langchain_core.documents import Document
+from rag_core import *
 
+# Utility Functions
+def clean_text(text: str) -> str:
+    """Clean the text by removing headers and extra whitespace."""
+    header_pattern = r'(?:27\.12\.2022 EN Official Journal of the European Union L 333/\d+|L 333/\d+ EN Official Journal of the European Union 27\.12\.2022)'
+    text = re.sub(header_pattern, '', text, flags=re.MULTILINE)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
-@dataclass
-class ChunkingConfig:
-    strategy: str  # 'character', 'paragraph', or 'word'
-    chunk_size: int
-    overlap: Optional[float] = None
-
-# -----------------Text Extraction-----------------------
-
-def chunk_text(text: str, config: ChunkingConfig) -> List[str]:
-    """Chunk text based on specified strategy."""
-    if config.strategy == 'paragraph':
-        # Split on double newlines and filter empty chunks
-        paragraphs = [p.strip() for p in text.split('\n\n')]
-        return [p for p in paragraphs if p]
-    
-    elif config.strategy == 'word':
-        # Split text into words
-        words = text.split()
-        # Calculate step size based on overlap if provided
-        step = max(1, round(config.chunk_size - config.chunk_size * (config.overlap or 0)))
-        chunks = []
-        
-        for i in range(0, len(words), step):
-            chunk = words[i:i + config.chunk_size]
-            if chunk:  # only add non-empty chunks
-                chunks.append(' '.join(chunk))
-        
-        return chunks
-        
-    else:  # default to character-based
-        # If no overlap specified, use chunk_size as step
-        step = max(1, round(config.chunk_size - config.chunk_size * (config.overlap or 0)))
-        return [
-            text[i:i + config.chunk_size].strip()
-            for i in range(0, len(text), step)
-            if text[i:i + config.chunk_size].strip()  # only keep non-empty chunks
-        ]
-
-def extract_text_from_pdf(pdf_path: str) -> str:
-    with pdfplumber.open(pdf_path) as pdf:
-        text = " ".join(page.extract_text() for page in pdf.pages)
-    return re.sub(r'\s+', ' ', text).strip()
-
-# ------------------Embedding Generation------------------
-
-class EmbeddingModel:
-    _instance = None
-    
-    @classmethod
-    def get_instance(cls) -> SentenceTransformer:
-        """
-        Singleton method to get or create the embedding model instance.
-        Returns the same model instance throughout the program's lifetime.
-        """
-        if cls._instance is None:
-            cls._instance = SentenceTransformer('all-MiniLM-L6-v2')
-        return cls._instance
-
-def generate_embeddings(texts: List[str], task: str = 'retrieval.query', batch_size: int = 32) -> List[List[float]]:
-    model = EmbeddingModel.get_instance()
-    
-    embeddings = model.encode(
-        texts,
-        batch_size=batch_size,
-        show_progress_bar=True
-    ).tolist()
-        
-    return embeddings
-
-# ------------QA-Pipeline---------------
-from transformers import pipeline, AutoModel, AutoTokenizer, AutoModelForQuestionAnswering, AutoModelForPreTraining, BertForQuestionAnswering
-
-def truncate_context(context: str, max_tokens: int = 512) -> str:
+def find_sentence_boundary(text: str, position: int, forward: bool = True) -> int:
     """
-    Truncate the context to ensure it fits within the model's token limit.
-    """
-    tokenizer = AutoTokenizer.from_pretrained("deepset/bert-base-cased-squad2")
-    tokenized_context = tokenizer(context, truncation=True, max_length=max_tokens, return_tensors="pt")
-    return tokenizer.decode(tokenized_context['input_ids'][0], skip_special_tokens=True)
-
-# --------------------------------
-
-def load_qa_pipeline():
-    tokenizer = AutoTokenizer.from_pretrained("deepset/bert-base-cased-squad2")
-    model = BertForQuestionAnswering.from_pretrained("deepset/bert-base-cased-squad2")
-    return pipeline("question-answering", model=model, tokenizer=tokenizer)
-
-QA_PIPELINE = load_qa_pipeline()
-
-def generate_answer(query: str, context: str) -> str:
-
-    """
-    Generate an answer for a query based on the provided context using a generative language model.
-    """    
-    # Prepare input
-    truncated_context = truncate_context(context, max_tokens=512)
-    input_data = {"question": query, "context": truncated_context}
-    # input_data = {"question": query, "context": context}
-    
-    # Generate an answer
-    result = QA_PIPELINE(input_data)
-    return result['answer']
-
-# -----------------------------
-
-# Load the summarization pipeline once and cache it for reuse
-def load_summarization_pipeline():
-    """
-    Load the summarization pipeline with a generative model.
-    """
-    return pipeline("summarization", model="facebook/bart-large-cnn")
-
-# Cached instance of the summarizer
-SUMMARIZER = load_summarization_pipeline()
-
-# ------------------------------
-
-def summarize_answer(chunks: List[str], query: str) -> str:
-    """
-    Summarize the retrieved chunks into a concise answer based on the query.
+    Find the nearest sentence boundary from a given position.
     
     Args:
-        chunks (List[str]): Retrieved chunks of text.
-        query (str): The user's question or query.
+        text: The text to search in
+        position: Starting position
+        forward: If True, search forward; if False, search backward
     
     Returns:
-        str: A concise, query-focused summary.
+        Position of the nearest sentence boundary
     """
-    # Combine the top-k chunks into a single context
-    combined_context = " ".join(chunks)
-    truncated_context = truncate_context(combined_context, max_tokens=1024)
+    endings = {'.', '!', '?', ':', ';'}
+    if forward:
+        for i in range(position, len(text)):
+            if text[i] in endings and (i + 1 == len(text) or text[i + 1].isspace()):
+                return i + 1
+        return len(text)
+    else:
+        for i in range(position - 1, -1, -1):
+            if i > 0 and text[i - 1] in endings and text[i].isspace():
+                return i
+        return 0
+
+def create_chunks(text: str, chunk_size: int = 1000, overlap: int = 50, min_chunk_size: int = 100) -> list:
+    """
+    Create chunks with proper word and sentence preservation.
     
-    # Format input for summarization
-    prompt = (
-        f"Context: {truncated_context}\n\n"
-        f"Question: {query}\n\n"
-        "Provide a concise and relevant answer to the question based on the context."
-    )
+    Args:
+        text: The text to chunk
+        chunk_size: Target size for each chunk in characters
+        overlap: Number of characters to overlap between chunks
+        min_chunk_size: Minimum size for any chunk
     
-    # Generate the summary
-    summary = SUMMARIZER(
-        prompt,
-        max_length=150,  # Limit the length of the summary
-        min_length=50,   # Ensure the summary isn't too short
-        do_sample=False  # Deterministic output
-    )
+    Returns:
+        List of text chunks
+    """
+    if not text:
+        return []
+
+    chunks = []
+    current_pos = 0
+    text_length = len(text)
+
+    while current_pos < text_length:
+        chunk_end = min(current_pos + chunk_size, text_length)
+        if chunk_end < text_length:
+            chunk_end = find_sentence_boundary(text, chunk_end, forward=True)
+        chunk = text[current_pos:chunk_end].strip()
+        if len(chunk) >= min_chunk_size:
+            chunks.append(chunk)
+        elif chunks:
+            chunks[-1] += " " + chunk
+        if chunk_end < text_length:
+            overlap_start = max(current_pos, chunk_end - overlap)
+            current_pos = find_sentence_boundary(text, overlap_start, forward=False)
+        else:
+            current_pos = chunk_end
+
+    validated_chunks = []
+    for chunk in chunks:
+        if not chunk[0].isupper() and validated_chunks:
+            validated_chunks[-1] += " " + chunk
+            continue
+        chunk = re.sub(r'\s+', ' ', chunk)
+        validated_chunks.append(chunk)
+
+    return validated_chunks
+
+def process_pdf_for_rag(pdf_path: str, output_file: str = None, chunk_size: int = 1000, overlap: int = 50, min_chunk_size: int = 100):
+    """
+    Process PDF and create chunks suitable for RAG.
     
-    return summary[0]['summary_text']
+    Args:
+        pdf_path: Path to PDF file
+        output_file: Optional path to save chunks
+        chunk_size: Size of each chunk in characters
+        overlap: Number of characters to overlap between chunks
+        min_chunk_size: Minimum size for any chunk
+    """
+    all_text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                all_text += " " + clean_text(text)
 
+    chunks = create_chunks(all_text, chunk_size=chunk_size, overlap=overlap, min_chunk_size=min_chunk_size)
 
-# ----------Retrieve Embeddings-------------
-# Function to save and load embeddings
-def save_embeddings(file_name, embeddings, chunks):
-    """Save embeddings and chunks to a file."""
-    with open(f"embeddings_{file_name}.pkl", "wb") as f:
-        pickle.dump({"embeddings": embeddings, "chunks": chunks}, f)
+    if output_file:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(chunks, f, indent=2, ensure_ascii=False)
+        print(f"Chunks saved to: {output_file}")
 
-def load_embeddings(file_name):
-    """Load embeddings and chunks from a file if available."""
-    try:
-        with open(f"embeddings_{file_name}.pkl", "rb") as f:
-            data = pickle.load(f)
-            return data["embeddings"], data["chunks"]
-    except FileNotFoundError:
-        return None, None
+    return chunks
 
-def get_file_hash(file) -> str:
-    """Generate a hash for the file to uniquely identify it."""
-    return hashlib.md5(file.getvalue()).hexdigest()
+def ensure_folders_exist():
+    os.makedirs("embeddings_index", exist_ok=True)
+    if not os.path.exists("chat_history.json"):
+        with open("chat_history.json", "w") as f:
+            json.dump([], f)
+
+def load_chat_history() -> list:
+    if os.path.exists("chat_history.json"):
+        with open("chat_history.json", "r") as f:
+            return json.load(f)
+    return []
+
+def save_chat_history(chat_history: list):
+    with open("chat_history.json", "w") as f:
+        json.dump(chat_history, f, indent=4)
+
+def clear_chat_history():
+    with open("chat_history.json", "w") as f:
+        json.dump([], f)
