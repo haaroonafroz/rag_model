@@ -9,7 +9,7 @@ import torch
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from langchain_core.documents import Document
-from rag_core import *
+# from rag_core import *
 
 # Utility Functions
 def clean_text(text: str) -> str:
