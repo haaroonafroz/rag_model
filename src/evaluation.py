@@ -2,7 +2,7 @@ import json
 import logging
 from langchain_community.llms import Ollama
 from langchain_core.documents import Document
-from rag_core import EmbeddingRetriever
+from embeddings import EmbeddingRetriever
 import random
 import os
 

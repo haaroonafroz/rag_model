@@ -11,6 +11,22 @@ from sentence_transformers import SentenceTransformer
 from langchain_core.documents import Document
 # from rag_core import *
 
+
+# Default prompts
+DEFAULT_SYSTEM_PROMPT = """Answer the user's question using only the context provided. The answer should be precise without any extra detail that does not exist in the given context.
+If you don't understand the question or can't find relevant information in the retrieved context, reply with 'I don't know.'."""
+
+def load_generator_prompt(prompt_file: str = "src/generator_prompt.txt") -> str:
+    """Load the generator prompt from a text file."""
+    try:
+        with open(prompt_file, 'r', encoding='utf-8') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"⚠️ Prompt file {prompt_file} not found, using default prompt")
+        return DEFAULT_SYSTEM_PROMPT
+    except Exception as e:
+        print(f"⚠️ Error loading prompt file: {e}, using default prompt")
+        return DEFAULT_SYSTEM_PROMPT
 # Utility Functions
 def clean_text(text: str) -> str:
     """Clean the text by removing headers and extra whitespace."""
@@ -127,10 +143,30 @@ def load_chat_history() -> list:
             return json.load(f)
     return []
 
-def save_chat_history(chat_history: list):
+def save_chat_history(question: str, response: str, retrieved_docs: list):
+    """Save a single chat entry to the chat history file."""
+    chat_history = load_chat_history()
+    chat_history.append({
+        "question": question, 
+        "response": response,
+        "retrieved_chunks": [doc.page_content for doc in retrieved_docs]
+    })
     with open("chat_history.json", "w") as f:
         json.dump(chat_history, f, indent=4)
 
 def clear_chat_history():
     with open("chat_history.json", "w") as f:
         json.dump([], f)
+
+def load_document_chunks(chunks_file: str) -> list:
+    """Load document chunks from JSON file."""
+    if not os.path.exists(chunks_file):
+        raise FileNotFoundError(f"Chunks file not found: {chunks_file}")
+    
+    with open(chunks_file, 'r', encoding='utf-8') as f:
+        chunks = json.load(f)
+    
+    if not chunks:
+        raise ValueError(f"No chunks found in {chunks_file}")
+    
+    return chunks

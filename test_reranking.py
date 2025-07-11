@@ -3,7 +3,7 @@
 Test script to verify reranking functionality
 """
 
-from src.rag_core import initialize_retriever
+from src.embeddings import initialize_retriever
 import time
 
 def test_reranking():
