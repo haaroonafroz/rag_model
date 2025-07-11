@@ -124,6 +124,7 @@ RAG_model/
 
 ### Example Queries
 ```
+"What are the requirements for financial entities?"
 "What are the ICT risk management requirements for financial entities?"
 "How should we implement business continuity plans under DORA?"
 "What are the reporting obligations for major ICT-related incidents?"
